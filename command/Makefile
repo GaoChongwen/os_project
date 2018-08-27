@@ -89,12 +89,6 @@ mv.o: mv.c ../include/stdio.h ../include/sys/fs.h
 mv : mv.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-cpuinfo.o: cpuinfo.c ../include/stdio.h
-	$(CC) $(CFLAGS) -o $@ $<
-
-cpuinfo : cpuinfo.o start.o $(LIB)
-	$(LD) $(LDFLAGS) -o $@ $?
-
 escape.o: escape.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
