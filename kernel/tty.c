@@ -185,20 +185,11 @@ PUBLIC void in_process(TTY* tty, u32 key)
 		case F1:
 		case F2:
 		case F3:
-		case F4:
-		case F5:
-		case F6:
-		case F7:
-		case F8:
-		case F9:
-		case F10:
-		case F11:
-		case F12:
-			if ((key & FLAG_ALT_L) ||
-			    (key & FLAG_ALT_R)) {	/* Alt + F1~F12 */
-				select_console(raw_code - F1);
-			}
+
+			select_console(raw_code - F1);
+			
 			break;
+
 		default:
 			break;
 		}
@@ -484,4 +475,5 @@ PUBLIC void dump_tty_buf()
 
 	strcpy(sep, "\n");
 }
+
 

@@ -34,16 +34,15 @@ struct proc {
 	u16 ldt_sel;               /* gdt selector giving ldt base and limit */
 	struct descriptor ldts[LDT_SIZE]; /* local descs for code and data */
 
-        int ticks;                 /* remained ticks */
-        int priority;
+	int ticks;
+	int prio;                 
+	int priority;
+	int feedback;
 
-	/* u32 pid;                   /\* process id passed in from MM *\/ */
-	char name[16];		   /* name of the process */
+	
+	char name[16];		   
 
-	int  p_flags;              /**
-				    * process flags.
-				    * A proc is runnable iff p_flags==0
-				    */
+	int  p_flags;              
 
 	MESSAGE * p_msg;
 	int p_recvfrom;

@@ -34,8 +34,10 @@ PUBLIC void clock_handler(int irq)
 	if (++ticks >= MAX_TICKS)
 		ticks = 0;
 
-	if (p_proc_ready->ticks)
+	if (p_proc_ready->ticks) {
+		p_proc_ready->feedback++;
 		p_proc_ready->ticks--;
+	}
 
 	if (key_pressed)
 		inform_int(TASK_TTY);
@@ -45,7 +47,17 @@ PUBLIC void clock_handler(int irq)
 	}
 
 	if (p_proc_ready->ticks > 0) {
-		return;
+		if (p_proc_ready->priority == 1)
+			return;
+		if (p_proc_ready->feedback == RR_TIME) {
+			if (p_proc_ready->prio - RR_TIME > 0) {
+				p_proc_ready->prio -= RR_TIME;
+				p_proc_ready->ticks = 0;
+			}
+			else {
+				p_proc_ready->prio = RR_TIME * 4;
+			}
+		}
 	}
 
 	schedule();

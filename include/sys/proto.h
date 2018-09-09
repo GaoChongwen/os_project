@@ -44,6 +44,7 @@ PUBLIC void TestA();
 PUBLIC void TestB();
 PUBLIC void TestC();
 PUBLIC void panic(const char *fmt, ...);
+//PUBLIC void clear();
 
 /* i8259.c */
 PUBLIC void init_8259A();
@@ -112,7 +113,7 @@ PUBLIC void		do_exit(int status);
 PUBLIC void		do_wait();
 
 /* mm/exec.c */
-/* PUBLIC int		do_exec(); */
+PUBLIC int		do_exec();
 
 /* console.c */
 PUBLIC void out_char(CONSOLE* p_con, char ch);

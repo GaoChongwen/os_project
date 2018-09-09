@@ -145,8 +145,6 @@ PUBLIC int do_open()
  * 
  * @see open()
  * @see do_open()
- *
- * @todo return values of routines called, return values of self.
  *****************************************************************************/
 PRIVATE struct inode * create_file(char * path, int flags)
 {

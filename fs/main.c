@@ -27,6 +27,7 @@ PRIVATE void mkfs();
 PRIVATE void read_super_block(int dev);
 PRIVATE int fs_fork();
 PRIVATE int fs_exit();
+PUBLIC int fs_list();
 
 /*****************************************************************************
  *                                task_fs
@@ -62,6 +63,9 @@ PUBLIC void task_fs()
 		case UNLINK:
 			fs_msg.RETVAL = do_unlink();
 			break;
+		case LIST:
+			fs_msg.FD = fs_list();
+			break;
 		case RESUME_PROC:
 			src = fs_msg.PROC_NR;
 			break;
@@ -74,9 +78,9 @@ PUBLIC void task_fs()
 		/* case LSEEK: */
 		/* 	fs_msg.OFFSET = do_lseek(); */
 		/* 	break; */
-		/* case STAT: */
-		/* 	fs_msg.RETVAL = do_stat(); */
-		/* 	break; */
+		case STAT:
+			fs_msg.RETVAL = do_stat();
+			break;
 		default:
 			dump_msg("FS::unknown message:", &fs_msg);
 			assert(0);
@@ -89,6 +93,7 @@ PUBLIC void task_fs()
 		msg_name[CLOSE]  = "CLOSE";
 		msg_name[READ]   = "READ";
 		msg_name[WRITE]  = "WRITE";
+		msg_name[LIST]  = "LIST";
 		msg_name[LSEEK]  = "LSEEK";
 		msg_name[UNLINK] = "UNLINK";
 		/* msg_name[FORK]   = "FORK"; */
@@ -104,10 +109,11 @@ PUBLIC void task_fs()
 		case CLOSE:
 		case READ:
 		case WRITE:
+		case LIST:
 		case FORK:
 		case EXIT:
 		/* case LSEEK: */
-		/* case STAT: */
+		case STAT:
 			break;
 		case RESUME_PROC:
 			break;
@@ -174,6 +180,7 @@ PRIVATE void init_fs()
  * <Ring 1> Make a available Orange'S FS in the disk. It will
  *          - Write a super block to sector 1.
  *          - Create three special files: dev_tty0, dev_tty1, dev_tty2
+ *          - Create a file cmd.tar
  *          - Create the inode map
  *          - Create the sector map
  *          - Create the inodes of the files
@@ -184,8 +191,9 @@ PRIVATE void mkfs()
 	MESSAGE driver_msg;
 	int i, j;
 
-	int bits_per_sect = SECTOR_SIZE * 8; /* 8 bits per byte */
-
+	/************************/
+	/*      super block     */
+	/************************/
 	/* get the geometry of ROOTDEV */
 	struct part_info geo;
 	driver_msg.type		= DEV_IOCTL;
@@ -198,11 +206,10 @@ PRIVATE void mkfs()
 
 	printl("{FS} dev size: 0x%x sectors\n", geo.size);
 
-	/************************/
-	/*      super block     */
-	/************************/
+	int bits_per_sect = SECTOR_SIZE * 8; /* 8 bits per byte */
+	/* generate a super block */
 	struct super_block sb;
-	sb.magic	  = MAGIC_V1;
+	sb.magic	  = MAGIC_V1; /* 0x111 */
 	sb.nr_inodes	  = bits_per_sect;
 	sb.nr_inode_sects = sb.nr_inodes * INODE_SIZE / SECTOR_SIZE;
 	sb.nr_sects	  = geo.size; /* partition size in sector */
@@ -239,17 +246,18 @@ PRIVATE void mkfs()
 	/*       inode map      */
 	/************************/
 	memset(fsbuf, 0, SECTOR_SIZE);
-	for (i = 0; i < (NR_CONSOLES + 2); i++)
+	for (i = 0; i < (NR_CONSOLES + 3); i++)
 		fsbuf[0] |= 1 << i;
 
-	assert(fsbuf[0] == 0x1F);/* 0001 1111 : 
-				  *    | ||||
-				  *    | |||`--- bit 0 : reserved
-				  *    | ||`---- bit 1 : the first inode,
-				  *    | ||              which indicates `/'
-				  *    | |`----- bit 2 : /dev_tty0
-				  *    | `------ bit 3 : /dev_tty1
-				  *    `-------- bit 4 : /dev_tty2
+	assert(fsbuf[0] == 0x3F);/* 0011 1111 :
+				  *   || ||||
+				  *   || |||`--- bit 0 : reserved
+				  *   || ||`---- bit 1 : the first inode,
+				  *   || ||              which indicates `/'
+				  *   || |`----- bit 2 : /dev_tty0
+				  *   || `------ bit 3 : /dev_tty1
+				  *   |`-------- bit 4 : /dev_tty2
+				  *   `--------- bit 5 : /cmd.tar
 				  */
 	WR_SECT(ROOT_DEV, 2);
 
@@ -275,6 +283,31 @@ PRIVATE void mkfs()
 	for (i = 1; i < sb.nr_smap_sects; i++)
 		WR_SECT(ROOT_DEV, 2 + sb.nr_imap_sects + i);
 
+	/* cmd.tar */
+	/* make sure it'll not be overwritten by the disk log */
+	assert(INSTALL_START_SECT + INSTALL_NR_SECTS < 
+	       sb.nr_sects - NR_SECTS_FOR_LOG);
+	int bit_offset = INSTALL_START_SECT -
+		sb.n_1st_sect + 1; /* sect M <-> bit (M - sb.n_1stsect + 1) */
+	int bit_off_in_sect = bit_offset % (SECTOR_SIZE * 8);
+	int bit_left = INSTALL_NR_SECTS;
+	int cur_sect = bit_offset / (SECTOR_SIZE * 8);
+	RD_SECT(ROOT_DEV, 2 + sb.nr_imap_sects + cur_sect);
+	while (bit_left) {
+		int byte_off = bit_off_in_sect / 8;
+		/* this line is ineffecient in a loop, but I don't care */
+		fsbuf[byte_off] |= 1 << (bit_off_in_sect % 8);
+		bit_left--;
+		bit_off_in_sect++;
+		if (bit_off_in_sect == (SECTOR_SIZE * 8)) {
+			WR_SECT(ROOT_DEV, 2 + sb.nr_imap_sects + cur_sect);
+			cur_sect++;
+			RD_SECT(ROOT_DEV, 2 + sb.nr_imap_sects + cur_sect);
+			bit_off_in_sect = 0;
+		}
+	}
+	WR_SECT(ROOT_DEV, 2 + sb.nr_imap_sects + cur_sect);
+
 	/************************/
 	/*       inodes         */
 	/************************/
@@ -282,9 +315,10 @@ PRIVATE void mkfs()
 	memset(fsbuf, 0, SECTOR_SIZE);
 	struct inode * pi = (struct inode*)fsbuf;
 	pi->i_mode = I_DIRECTORY;
-	pi->i_size = DIR_ENTRY_SIZE * 4; /* 4 files:
+	pi->i_size = DIR_ENTRY_SIZE * 5; /* 5 files:
 					  * `.',
 					  * `dev_tty0', `dev_tty1', `dev_tty2',
+					  * `cmd.tar'
 					  */
 	pi->i_start_sect = sb.n_1st_sect;
 	pi->i_nr_sects = NR_DEFAULT_FILE_SECTS;
@@ -296,6 +330,12 @@ PRIVATE void mkfs()
 		pi->i_start_sect = MAKE_DEV(DEV_CHAR_TTY, i);
 		pi->i_nr_sects = 0;
 	}
+	/* inode of `/cmd.tar' */
+	pi = (struct inode*)(fsbuf + (INODE_SIZE * (NR_CONSOLES + 1)));
+	pi->i_mode = I_REGULAR;
+	pi->i_size = INSTALL_NR_SECTS * SECTOR_SIZE;
+	pi->i_start_sect = INSTALL_START_SECT;
+	pi->i_nr_sects = INSTALL_NR_SECTS;
 	WR_SECT(ROOT_DEV, 2 + sb.nr_imap_sects + sb.nr_smap_sects);
 
 	/************************/
@@ -313,6 +353,8 @@ PRIVATE void mkfs()
 		pde->inode_nr = i + 2; /* dev_tty0's inode_nr is 2 */
 		sprintf(pde->name, "dev_tty%d", i);
 	}
+	(++pde)->inode_nr = NR_CONSOLES + 2;
+	sprintf(pde->name, "cmd.tar", i);
 	WR_SECT(ROOT_DEV, sb.n_1st_sect);
 }
 
@@ -557,3 +599,56 @@ PRIVATE int fs_exit()
 	return 0;
 }
 
+
+/*****************************************************************************
+ *                                fs_list
+ *****************************************************************************/
+/**
+ * Show all files under the directory.
+ * 
+ * @return Zero if success.
+ *****************************************************************************/
+PUBLIC int fs_list()
+{
+	int src = fs_msg.source;		/* caller proc nr. */
+	void* buf = fs_msg.BUF;
+	int bytes_rw = 0;
+	//memcpy(buf, "filesystem", 10);
+	/*phys_copy((void*)va2la(src, buf + bytes_rw),
+		  "filesystem",
+		  10);*/
+
+	struct inode* dir_inode = root_inode;
+
+	int dir_blk0_nr = dir_inode->i_start_sect;
+	int nr_dir_blks = (dir_inode->i_size + SECTOR_SIZE) / SECTOR_SIZE;
+	int nr_dir_entries =
+		dir_inode->i_size / DIR_ENTRY_SIZE; 
+	int m = 0;
+	struct dir_entry * pde;
+
+	int i, j;
+	for (i = 0; i < nr_dir_blks; i++) {
+		RD_SECT(dir_inode->i_dev, dir_blk0_nr + i);
+
+		pde = (struct dir_entry *)fsbuf;
+		for (j = 0; j < SECTOR_SIZE / DIR_ENTRY_SIZE; j++,pde++) {
+			if (++m > nr_dir_entries)
+				break;
+			if(pde->inode_nr != 0) {
+				phys_copy((void*)va2la(src, buf + bytes_rw),
+					  (void*)pde->name,
+					  strlen(pde->name));
+				bytes_rw += strlen(pde->name);
+				phys_copy((void*)va2la(src, buf + bytes_rw),
+					  "|",
+					  1);
+				bytes_rw += 1;
+			}
+		}
+		if (m > nr_dir_entries)/* all entries have been iterated or */
+			break;
+	}
+
+	return 0;
+}

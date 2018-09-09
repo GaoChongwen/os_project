@@ -45,10 +45,13 @@ PUBLIC void schedule()
 			}
 		}
 
-		if (!greatest_ticks)
-			for (p = &FIRST_PROC; p <= &LAST_PROC; p++)
-				if (p->p_flags == 0)
-					p->ticks = p->priority;
+		if (!greatest_ticks) {
+			for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
+				if (p->p_flags == 0) {
+						p->ticks = p->prio;		 
+				}	
+			}
+		}								
 	}
 }
 
@@ -101,47 +104,6 @@ PUBLIC int sys_sendrec(int function, int src_dest, MESSAGE* m, struct proc* p)
 	}
 
 	return 0;
-}
-
-/*****************************************************************************
- *                                send_recv
- *****************************************************************************/
-/**
- * <Ring 1~3> IPC syscall.
- *
- * It is an encapsulation of `sendrec',
- * invoking `sendrec' directly should be avoided
- *
- * @param function  SEND, RECEIVE or BOTH
- * @param src_dest  The caller's proc_nr
- * @param msg       Pointer to the MESSAGE struct
- * 
- * @return always 0.
- *****************************************************************************/
-PUBLIC int send_recv(int function, int src_dest, MESSAGE* msg)
-{
-	int ret = 0;
-
-	if (function == RECEIVE)
-		memset(msg, 0, sizeof(MESSAGE));
-
-	switch (function) {
-	case BOTH:
-		ret = sendrec(SEND, src_dest, msg);
-		if (ret == 0)
-			ret = sendrec(RECEIVE, src_dest, msg);
-		break;
-	case SEND:
-	case RECEIVE:
-		ret = sendrec(function, src_dest, msg);
-		break;
-	default:
-		assert((function == BOTH) ||
-		       (function == SEND) || (function == RECEIVE));
-		break;
-	}
-
-	return ret;
 }
 
 /*****************************************************************************
@@ -371,6 +333,7 @@ PRIVATE int msg_send(struct proc* current, int dest, MESSAGE* m)
  *****************************************************************************/
 PRIVATE int msg_receive(struct proc* current, int src, MESSAGE* m)
 {
+	//disable_int();
 	struct proc* p_who_wanna_recv = current; /**
 						  * This name is a little bit
 						  * wierd, but it makes me
@@ -502,10 +465,7 @@ PRIVATE int msg_receive(struct proc* current, int src, MESSAGE* m)
 		p_from->p_flags &= ~SENDING;
 		unblock(p_from);
 	}
-	else {  /* nobody's sending any msg */
-		/* Set p_flags so that p_who_wanna_recv will not
-		 * be scheduled until it is unblocked.
-		 */
+	else {  
 		p_who_wanna_recv->p_flags |= RECEIVING;
 
 		p_who_wanna_recv->p_msg = m;
@@ -518,7 +478,7 @@ PRIVATE int msg_receive(struct proc* current, int src, MESSAGE* m)
 		assert(p_who_wanna_recv->p_sendto == NO_TASK);
 		assert(p_who_wanna_recv->has_int_msg == 0);
 	}
-
+	//enable_int();
 	return 0;
 }
 
