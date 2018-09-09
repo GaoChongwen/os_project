@@ -25,9 +25,9 @@
 /* local routines */
 PRIVATE void	set_cursor(unsigned int position);
 PRIVATE void	set_video_start_addr(u32 addr);
-PRIVATE void	flush(CONSOLE* con);
+PUBLIC void	flush(CONSOLE* con);
 PRIVATE	void	w_copy(unsigned int dst, const unsigned int src, int size);
-PUBLIC  void	clear_screen(int pos, int len);
+PUBLIC void	clear_screen(int pos, int len);
 
 /*****************************************************************************
  *                                init_screen
@@ -62,7 +62,7 @@ PUBLIC void init_screen(TTY* tty)
 		/* 
 		 * `?' in this string will be replaced with 0, 1, 2, ...
 		 */
-		const char prompt[] = "[TTY #?]\n";
+		const char prompt[] = "[Console #?]\n";
 
 		const char * p = prompt;
 		for (; *p; p++)
@@ -305,7 +305,7 @@ PUBLIC void scroll_screen(CONSOLE* con, int dir)
  * 
  * @param con  The console to be set.
  *****************************************************************************/
-PRIVATE void flush(CONSOLE* con)
+PUBLIC void flush(CONSOLE* con)
 {
 	if (is_current_console(con)) {
 		set_cursor(con->cursor);

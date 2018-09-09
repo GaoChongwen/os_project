@@ -54,7 +54,7 @@
 #define TTY_END		(tty_table + NR_CONSOLES)
 
 
-PRIVATE void	init_tty	(TTY* tty);
+PUBLIC void	init_tty	(TTY* tty);
 PRIVATE void	tty_dev_read	(TTY* tty);
 PRIVATE void	tty_dev_write	(TTY* tty);
 PRIVATE void	tty_do_read	(TTY* tty, MESSAGE* msg);
@@ -132,16 +132,16 @@ PUBLIC void task_tty()
  * 
  * @param tty  TTY stands for teletype, a cool ancient magic thing.
  *****************************************************************************/
-PRIVATE void init_tty(TTY* tty)
+PUBLIC void init_tty(TTY* tty)
 {
 	tty->ibuf_cnt = 0;
 	tty->ibuf_head = tty->ibuf_tail = tty->ibuf;
 
-	tty->tty_caller = NO_TASK;
-	tty->tty_procnr = NO_TASK;
-	tty->tty_req_buf = 0;
-	tty->tty_left_cnt = 0;
-	tty->tty_trans_cnt = 0;
+	// tty->tty_caller = NO_TASK;
+	// tty->tty_procnr = NO_TASK;
+	// tty->tty_req_buf = 0;
+	// tty->tty_left_cnt = 0;
+	// tty->tty_trans_cnt = 0;
 
 	init_screen(tty);
 }
@@ -185,11 +185,20 @@ PUBLIC void in_process(TTY* tty, u32 key)
 		case F1:
 		case F2:
 		case F3:
-
-			select_console(raw_code - F1);
-			
+		case F4:
+		case F5:
+		case F6:
+		case F7:
+		case F8:
+		case F9:
+		case F10:
+		case F11:
+		case F12:
+			if ((key & FLAG_ALT_L) ||
+			    (key & FLAG_ALT_R)) {	/* Alt + F1~F12 */
+				select_console(raw_code - F1);
+			}
 			break;
-
 		default:
 			break;
 		}
@@ -475,5 +484,4 @@ PUBLIC void dump_tty_buf()
 
 	strcpy(sep, "\n");
 }
-
 

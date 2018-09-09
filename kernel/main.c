@@ -2,7 +2,7 @@
 /*++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
                             main.c
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-                                                    Forrest Yu, 2005
+                                                    Xiao hong, 2016
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
 
 #include "type.h"
@@ -16,18 +16,9 @@
 #include "console.h"
 #include "global.h"
 #include "proto.h"
+#include "keyboard.h"
 
 
-PRIVATE void Toy_shell	(const char * tty_name);
-PRIVATE int  help       ();
-PRIVATE int pro_details ();
-PRIVATE int currentTime ();
-PRIVATE int get_commands(int argc, char* argv[]);
-PRIVATE int showLicense ();
-PRIVATE int pause		(int argc, char * argv[]);
-PRIVATE int awake		(int argc, char * argv[]);
-PRIVATE int kill		(int argc, char * argv[]);
-PRIVETA int clearScreen ();
 /*****************************************************************************
  *                               kernel_main
  *****************************************************************************/
@@ -35,46 +26,77 @@ PRIVETA int clearScreen ();
  * jmp from kernel.asm::_start. 
  * 
  *****************************************************************************/
+#define fileSize 8
+char location[128] = "User";
+char curFile[128]="User";
+char fileNames[20][128]={"User"};
+int fileCount=0;
+char password[10]="123";
+char curUser[10]="llp";
+
+
+int flag=0;
+int FAT[10][fileSize]={0};
+
+
+
+
+
+
+void sleep(int pauseTime){
+	int i = 0;
+	for(i=0;i<pauseTime*1000000;i++){
+;
+}
+}
+
+
+
+
+
+
+/*num2*/
+
+
 PUBLIC int kernel_main()
 {
-	disp_str("-----\"kernel_main\" begins-----\n");
+	disp_str("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+		 "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
 
 	int i, j, eflags, prio;
         u8  rpl;
-        u8  priv; /* privilegy */
+        u8  priv; /* privilege */
 
 	struct task * t;
 	struct proc * p = proc_table;
 
 	char * stk = task_stack + STACK_SIZE_TOTAL;
 
-
-	// 启动进程
 	for (i = 0; i < NR_TASKS + NR_PROCS; i++,p++,t++) {
-		if (i >= NR_TASKS + NR_NATIVE_PROCS) {	/*失效进程*/
+		if (i >= NR_TASKS + NR_NATIVE_PROCS) {
 			p->p_flags = FREE_SLOT;
 			continue;
 		}
 
-	    if (i < NR_TASKS) {     /*任务*/
-            t       = task_table + i;
-            priv    = PRIVILEGE_TASK;
-            rpl     = RPL_TASK;
-            eflags  = 0x1202;/* IF=1, IOPL=1, bit 2 is always 1 */
-			prio    = RR_TIME; //优先级
-			p->priority = 1; //标识系统进程
-        }
-        else {                  /* USER PROC */
-            t	    = user_proc_table + (i - NR_TASKS);
-            priv	= PRIVILEGE_USER;
-            rpl     = RPL_USER;
-            eflags  = 0x202;	/* IF=1, bit 2 is always 1 */
-			prio    = RR_TIME * 4; //优先级
-			p->priority = 0; //标识用户进程
-        }
+	        if (i < NR_TASKS) {     /* TASK */
+                        t	= task_table + i;
+                        priv	= PRIVILEGE_TASK;
+                        rpl     = RPL_TASK;
+                        eflags  = 0x1202;/* IF=1, IOPL=1, bit 2 is always 1 */
+												p->rank = RR_TIME;
+												p->priority = 1;
+                }
+                else {                  /* USER PROC */
+                        t	= user_proc_table + (i - NR_TASKS);
+                        priv	= PRIVILEGE_USER;
+                        rpl     = RPL_USER;
+                        eflags  = 0x202;	/* IF=1, bit 2 is always 1 */
+												p->rank = RR_TIME*4;
+												p->priority = 0;
+                }
 
-		strcpy(p->name, t->name);	/* 设定进程名字 */
-		p->p_parent = NO_TASK; 	/* 父进程 */
+		strcpy(p->name, t->name);	/* name of the process */
+		p->p_parent = NO_TASK;
 
 		if (strcmp(t->name, "INIT") != 0) {
 			p->ldts[INDEX_LDT_C]  = gdt[SELECTOR_KERNEL_CS >> 3];
@@ -89,26 +111,34 @@ PUBLIC int kernel_main()
 			unsigned int k_limit;
 			int ret = get_kernel_map(&k_base, &k_limit);
 			assert(ret == 0);
-			init_desc(&p->ldts[INDEX_LDT_C], 0, (k_base + k_limit) >> LIMIT_4K_SHIFT,
-				      DA_32 | DA_LIMIT_4K | DA_C | priv << 5);
+			init_desc(&p->ldts[INDEX_LDT_C],
+				  0, /* bytes before the entry point
+				      * are useless (wasted) for the
+				      * INIT process, doesn't matter
+				      */
+				  (k_base + k_limit) >> LIMIT_4K_SHIFT,
+				  DA_32 | DA_LIMIT_4K | DA_C | priv << 5);
 
-			init_desc(&p->ldts[INDEX_LDT_RW], 0, (k_base + k_limit) >> LIMIT_4K_SHIFT,
-				      DA_32 | DA_LIMIT_4K | DA_DRW | priv << 5);
+			init_desc(&p->ldts[INDEX_LDT_RW],
+				  0, /* bytes before the entry point
+				      * are useless (wasted) for the
+				      * INIT process, doesn't matter
+				      */
+				  (k_base + k_limit) >> LIMIT_4K_SHIFT,
+				  DA_32 | DA_LIMIT_4K | DA_DRW | priv << 5);
 		}
 
-		p->regs.cs = INDEX_LDT_C << 3  | SA_TIL | rpl;
-		p->regs.ds = INDEX_LDT_RW << 3 | SA_TIL | rpl;
-		p->regs.es = INDEX_LDT_RW << 3 | SA_TIL | rpl;
-		p->regs.fs = INDEX_LDT_RW << 3 | SA_TIL | rpl;
-		p->regs.ss = INDEX_LDT_RW << 3 | SA_TIL | rpl;
+		p->regs.cs = INDEX_LDT_C << 3 |	SA_TIL | rpl;
+		p->regs.ds =
+			p->regs.es =
+			p->regs.fs =
+			p->regs.ss = INDEX_LDT_RW << 3 | SA_TIL | rpl;
 		p->regs.gs = (SELECTOR_KERNEL_GS & SA_RPL_MASK) | rpl;
 		p->regs.eip	= (u32)t->initial_eip;
 		p->regs.esp	= (u32)stk;
 		p->regs.eflags	= eflags;
 
-		p->prio = prio;
 		p->ticks = RR_TIME;
-		
 
 		p->p_flags = 0;
 		p->p_msg = 0;
@@ -124,19 +154,21 @@ PUBLIC int kernel_main()
 		stk -= t->stacksize;
 	}
 
-	// 初始化进程
 	k_reenter = 0;
 	ticks = 0;
 
 	p_proc_ready	= proc_table;
 
 	init_clock();
-    init_keyboard();
+        init_keyboard();
 
 	restart();
 
 	while(1){}
 }
+
+
+
 
 
 /*****************************************************************************
@@ -161,6 +193,11 @@ struct time get_time_RTC()
 	return t;
 }
 
+int currentTime() {
+	struct time t = get_time_RTC();
+	printf("%d/%d/%d %d:%d:%d\n", t.year, t.month, t.day, (t.hour+15)%24, t.minute, t.second);
+	return 0;
+}
 
 /**
  * @struct posix_tar_header
@@ -197,7 +234,7 @@ struct posix_tar_header
  *****************************************************************************/
 void untar(const char * filename)
 {
-	printf("[extract `%s'\n", filename);
+	printf("[extract `%s' ", filename);
 	int fd = open(filename, O_RDWR);
 	assert(fd != -1);
 
@@ -224,8 +261,7 @@ void untar(const char * filename)
 			printf(" aborted]");
 			return;
 		}
-		printf("    %s (%d bytes)\n", phdr->name, f_len);
-
+		printf("    %s (%d bytes) ", phdr->name, f_len);
 		while (bytes_left) {
 			int iobytes = min(chunk, bytes_left);
 			read(fd, buf,
@@ -241,26 +277,181 @@ void untar(const char * filename)
 	printf(" done]\n");
 }
 
+
+
 /*****************************************************************************
- *                                Toy_shell
+ *                                Init
  *****************************************************************************/
 /**
- * shabby_shell from ch11_a
+ * The hen.
+ * 
+ *****************************************************************************/
+void Init()
+{
+	int fd_stdin  = open("/dev_tty0", O_RDWR);
+	assert(fd_stdin  == 0);
+	int fd_stdout = open("/dev_tty0", O_RDWR);
+	assert(fd_stdout == 1);
+
+	//printf("Init() is running ...\n");
+
+	/* extract `cmd.tar' */
+	untar("/cmd.tar");
+			
+
+	char * tty_list[] = {"/dev_tty0"};
+
+	int i;
+	for (i = 0; i < sizeof(tty_list) / sizeof(tty_list[0]); i++) {
+		int pid = fork();
+		if (pid != 0) { /* parent process */
+		}
+		else {	/* child process */
+			close(fd_stdin);
+			close(fd_stdout);
+			
+			shabby_shell(tty_list[i]);
+			assert(0);
+		}
+	}
+
+	while (1) {
+		int s;
+		int child = wait(&s);
+		printf("child (%d) exited with status: %d.\n", child, s);
+	}
+
+	assert(0);
+}
+
+
+/*======================================================================*
+                               TestA
+ *======================================================================*/
+void TestA()
+{
+	while(1)
+	{
+		//printl("%f\n",get_ticks());
+	}
+}
+
+/*======================================================================*
+                               TestB
+ *======================================================================*/
+void TestB()
+{
+	for(;;);
+}
+
+/*======================================================================*
+                               TestB
+ *======================================================================*/
+void TestC()
+{
+	for(;;);
+}
+
+/*****************************************************************************
+ *                                panic
+ *****************************************************************************/
+PUBLIC void panic(const char *fmt, ...)
+{
+	int i;
+	char buf[256];
+
+	/* 4 is the size of fmt in the stack */
+	va_list arg = (va_list)((char*)&fmt + 4);
+
+	i = vsprintf(buf, fmt, arg);
+
+	printl("%c !!panic!! %s", MAG_CH_PANIC, buf);
+
+	/* should never arrive here */
+	__asm__ __volatile__("ud2");
+}
+
+void hello(){
+	clear();
+	char *hello = "\n\n"
+"                                                                       \n"
+" /***************  /*********    /****     ****    *******      ********\n"
+"  //////***/////   /**      /**   //***   ***     **/////**    **////// \n"
+"       /***        /**       /**    //** **      **     //** /**       \n"
+"       /***        /***********      //***      /**      /** /*********\n"
+"       /***        /**  /**           /***      /**      /** ////////**\n"
+"       /***        /**    /**         /***      //**     **         /**\n"
+"       /***        /**      /**       /***       //*******    ******** \n"
+"        ///        ///       ///       ///        ///////    ////////  \n"
+"                                                                       \n"
+"                                                                       \n"
+"                                                                       \n"
+"                                                                       \n"
+"                                                                       \n"
+"                                                                       \n"
+"*****************************************************************************\n"
+"****                     welcome to =try-os=                               ****\n"
+"****                            developers:    Lipeng  Liang 1652667     ****\n"
+"****                                           Yiwen   Cheng 1652660     ****\n"
+"****                                           2018  08.15                ****\n"
+"*****************************************************************************\n";
+	int ch = 0;
+	for (ch = 0; ch <= strlen(hello); ch++){
+		printl("%c", hello[ch]);
+		milli_delay(10);
+	}
+
+
+	
+
+}
+
+/*****************************************************************************
+ *                                xiaohong_shell
+ *****************************************************************************/
+/**
+ * A very very powerful shell.
  * 
  * @param tty_name  TTY file name.
  *****************************************************************************/
-PRIVATE void Toy_shell(const char * tty_name) {
+void shabby_shell(const char * tty_name)
+{
+
+	
 	int fd_stdin  = open(tty_name, O_RDWR);
 	assert(fd_stdin  == 0);
 	int fd_stdout = open(tty_name, O_RDWR);
 	assert(fd_stdout == 1);
 
 	char rdbuf[128];
+	char cmd[128];
+    	char arg1[128];
+    	char arg2[128];
+    	char buf[1024];
+	int j = 0;
+
+	//colorful();
+	hello();
+	//welcome();
+	printf("press any key to start:\n");
+	int r = read(0, rdbuf, 128);
+	printf("press any key to start:\n");
+	help();
+	r = read(0, rdbuf, 128);
+	initFs();
 
 	while (1) {
-		write(1, "$ ", 2);
+
+		clearArr(rdbuf, 128);
+        	clearArr(cmd, 128);
+        	clearArr(arg1, 128);
+        	clearArr(arg2, 128);
+        	clearArr(buf, 1024);
+		
+		printf("%s $ ", location);
 		int r = read(0, rdbuf, 70);
 		rdbuf[r] = 0;
+	
 
 		int argc = 0;
 		char * argv[PROC_ORIGIN_STACK];
@@ -283,17 +474,155 @@ PRIVATE void Toy_shell(const char * tty_name) {
 		} while(ch);
 		argv[argc] = 0;
 
-		int ret = get_commands(argc, argv);
-		if(ret != -2) continue;
-
 		int fd = open(argv[0], O_RDWR);
 		if (fd == -1) {
 			if (rdbuf[0]) {
-				write(1, rdbuf, r);
-				write(1, ": command not found\n", 20);
+				int i = 0, j = 0;
+				/* get command */
+				while (rdbuf[i] != ' ' && rdbuf[i] != 0)
+				{
+					cmd[i] = rdbuf[i];
+					i++;
+				}
+				i++;
+				/* get arg1 */
+				while(rdbuf[i] != ' ' && rdbuf[i] != 0)
+        			{
+            				arg1[j] = rdbuf[i];
+            				i++;
+            				j++;
+        			}
+        			i++;
+        			j = 0;
+				/* get arg2 */
+       				while(rdbuf[i] != ' ' && rdbuf[i] != 0)
+        			{
+            				arg2[j] = rdbuf[i];
+            				i++;
+            				j++;
+        			}
+				if(strcmp(cmd,"login")==0)
+				  {
+				    login(arg1,arg2);
+				  }
+				else if(strcmp(cmd,"welcome")==0)
+				 	{
+				 		welcome();
+				 	}
+				else if(strcmp(argv[0], "license") == 0)
+				  {
+					 showLicense();
+				  }
+				else if(strcmp(cmd,"newLogin")==0)
+				  {
+				    newLogin();
+				  }
+				  else if(strcmp(cmd,"clear")==0)
+				  {
+				  	clear();
+				  }
+				  else if(strcmp(cmd,"help")==0)
+				  {
+				  	help();
+				  }
+					else if(strcmp(cmd,"time")==0)
+				  {
+				  	currentTime();
+				  }
+					else if(strcmp(cmd,"proc")==0)
+					{
+						showProcess();
+					}
+				else if(strcmp(cmd,"kill")==0)
+					{
+						kill(arg1);
+					}
+				else if(strcmp(cmd,"pause")==0)
+					{
+						pause(arg1);
+					}
+				else if(strcmp(cmd,"resume")==0)
+					{
+						resume(arg1);
+					}
+				else if(hasLogined()==0)
+				continue;
+				else if (strcmp(cmd, "rdt") == 0)
+				  {
+				    unlink(arg1);
+				  }			   
+				else if (strcmp(cmd, "save") == 0)
+				  {
+				    save();
+				  }		
+				else if (strcmp(cmd, "pwd") == 0)
+				  {
+						pwd();
+				  }
+				else if(strcmp(cmd,"create")==0)
+				  {
+				     createFile(arg1);
+				  }
+				else if(strcmp(cmd,"color")==0)
+				  {
+				  	colorful();
+				  	}
+				else if(strcmp(cmd,"edit")==0)
+				  {
+				    editFile(arg1);
+				  }
+				else if(strcmp(cmd,"read")==0)
+				  {
+				    readFile(arg1); 
+				  }
+				else if(strcmp(cmd,"ls")==0)
+					{
+				  	lsFile();	
+					}
+				else if(strcmp(cmd,"cd")==0)
+					{
+					cdFile(arg1);
+					}
+			  else if(strcmp(cmd,"delete")==0)
+					{
+					deleteFile(arg1);
+					}
+				else if(strcmp(cmd,"red")==0)
+					{
+						realEdit(arg1,arg2);
+					}
+				else if(strcmp(cmd,"initFLAT")==0)
+					{
+						for(i=0;i<10;i++)
+							for(j=0;j<fileSize;j++)
+								FAT[i][j]=0;
+					}
+				
+				else if(strcmp(cmd,"testArr")==0)
+				  {
+						printf("location:%s\n",location);
+				    printf("fileNames:\n");  
+				    for(i=0;i<20;i++)
+				      printf("%s | ",fileNames[i]);
+				    printf("FAT:\n");
+
+				    for(i=0;i<10;i++)
+				    {
+							for(j=0;j<fileSize;j++)
+								printf("%d",FAT[i][j]);
+							printf("\n");
+				    }
+				    printf("current file nums %d\n",fileCount);
+				    printf("current User: %s\n",curUser);		    
+	     		}
+	     	else
+	     	{
+	     		printf("unknown command\n");
+	     	}
 			}
 		}
 		else {
+			// printf("in other commands\n");
 			close(fd);
 			int pid = fork();
 			if (pid != 0) { /* parent */
@@ -301,6 +630,7 @@ PRIVATE void Toy_shell(const char * tty_name) {
 				wait(&s);
 			}
 			else {	/* child */
+			  // printf("enter child process.\n");
 				execv(argv[0], argv);
 			}
 		}
@@ -310,314 +640,433 @@ PRIVATE void Toy_shell(const char * tty_name) {
 	close(0);
 }
 
-/***********************************************************************
-				                clear 
-************************************************************************/
-PUBLIC void clear() {
-	int i = 0;
-	disp_pos = 0;
-	for(i=0;i<console_table[current_console].cursor;i++){
-		disp_str(" ");
-	}
-	disp_pos = 0;
+/* Tools */
 
-	console_table[current_console].crtc_start = 0;
-	console_table[current_console].cursor = 0;
+	/* Init Arr */
+void clearArr(char *arr, int length)
+{
+    int i;
+    for (i = 0; i < length; i++)
+        arr[i] = 0;
 }
 
-/***********************************************************************
-				           printInfo
-************************************************************************/
-PRIVATE void printInfo() {
-	clear();
-	 
-	char *info ="\n\n"
-				"					  *******						\n"
-				"				   *************					\n"
-				"				 *****************					\n"
-				"				*******************					\n"
-				"			   *********************				\n"
-				"			  ///////////////////////				\n"
-				"		  *******************************			\n"
-				"	  **************************************		\n"
-				"\n"
-				"					  ONE-PIECE						\n"
-	"\n"
-	"=========================================================="
-	"One-Piece-OS\n"
-	"Developed by 1652667 Lipeng Liang\n"
-	"             1652660 Yiwen Cheng\n"
-	"=========================================================="
-	"\n"
-	"Press F2 or F3 to console\n";
-	 
+void login(char * arg1,char *arg2 )
+{
+  if(strcmp(arg1,curUser)==0&&strcmp(arg2,password)==0)
+    {
+       flag=1;
+       printf("Welcome %s!\n",arg1);
+       return;
+    }
+  printf("Wrong Password!\n");
+  return;
+}
+
+int hasLogined()
+{
+  if(flag==0)
+    {
+      printf("Login First!\n");
+      return 0;
+    }
+  return 1;
+}
+
+void newLogin()
+{
+  char temp1[10];
+  char temp2[10];
+  clearArr(temp1,10);
+  clearArr(temp2,10);
+  printf("enter your username:\n");
+  read(0,temp1,10);
+  
+  printf("enter your password:\n");
+  read(0,temp2,10);
+  
+  printf("Welcome %s!\n",temp1);
+
+  clearAll(temp1,temp2);
+}
+
+
+
+
+
+void clearAll(char * temp1,char* temp2)
+{
+  int i=0,j=0;
+
+ clearArr(location,128);
+ clearArr(curFile,128);
+ fileCount=0;
+ strcpy(curUser,temp1);
+ strcpy(password,temp2);
+ strcpy(curFile,"User");
+ strcpy(location,"User");
+ flag=1;
+
+ for( i=1;i<20;i++)
+   {
+     if(strlen(fileNames[i])!=0)
+       {
+       unlink(fileNames[i]);
+       }
+     clearArr(fileNames[i],128);
+   }
+   
+
+ for(i=0;i<10;i++)
+   for(j=0;j<fileSize;j++)
+     FAT[i][j]=0;
+ save();
+ return;
+}
+
+void createAll()
+{
+  int fd = -1;
+
+  fd = open("User",O_CREAT);
+  assert(fd!=-1);
+  close(fd);
+   
+  fd = open("NoUse",O_CREAT);
+  assert(fd!=-1);
+  close(fd);
+  
+ fd = open("Password",O_CREAT);
+  assert(fd!=-1);
+  close(fd);
+
+ fd = open("FAT",O_CREAT);
+  assert(fd!=-1);
+  close(fd);
+
+
+ fd = open("FileNames",O_CREAT);
+  assert(fd!=-1);
+  close(fd);
+
+
+}
+
+void realEdit(char *fileName,char* content)
+{
+	int fd = open(fileName,O_RDWR);
+	write(fd,content,strlen(content));
+	close(fd);
+}
+
+void save()
+{
+  	char temp1[10][fileSize]={};
+	char temp2[1024];
+	char temp4[10];
+	int i=0,j=0,fd=-1;
+	
+	/* save User */
+	fd =open("User",O_RDWR);
+	assert(fd!=-1);
+	write(fd,curUser,10);
+	close(fd);
+
+
+	/* save password */
+
+	fd =open("Password",O_RDWR);
+	assert(fd!=-1);
+	write(fd,password,10);
+	close(fd);
+
+		
+	/* save FAT */
+       	for(i=0;i<10;i++)
+	  {
+	    for(j=0;j<fileSize;j++)
+	      temp1[i][j]= FAT[i][j];
+	  }
+
+	fd=open("FAT",O_RDWR);
+      	for(i=0;i<10;i++)
+	   write(fd,temp1[i],fileSize);
+	close(fd);
+
+	/* save fileNames */
+	fd = open("FileNames",O_RDWR);
+        assert(fd!=-1);
+	clearArr(temp2,1024);
+	write(fd,temp2,1024);
+	close(fd);
+
+	fd = open("FileNames",O_RDWR);
+	int num = fileCount;
+	for(i=1;num!=0;i++)
+	  {
+	    if(strlen(fileNames[i])==0)
+	      {
+		strcat(temp2,"empty");
+		strcat(temp2,"#");
+	      }
+	    else
+	      { 
+		strcat(temp2,fileNames[i]);
+		strcat(temp2,"#");
+		num--;
+	      }	   
+	  }
+	
+	write(fd,temp2,strlen(temp2));
+	close(fd);
+	  	
+}
+
+// void rrd(char* fileName)
+// {
+//   int fd=-1,r=0;
+//   char temp[128];
+
+//   clearArr(temp,128);
+//   fd=open(fileName,O_RDWR);
+//   assert(fd!=-1);
+//   r = read(fd,temp,30);
+//   close(fd);
+  
+//   printf("content in %s %d\n",temp,r);
+// }
+
+/* Init FS */
+void initFs()
+{
+  int fd=-1,i=0,r=0,j=0;
+        char temp[128]={};
+	
+	/* init User */
+	clearArr(curUser,10);
+	clearArr(temp,128);
+	fd=open("User",O_RDWR | O_CREAT);
+	r = read(fd,temp,128);
+	close(fd);
+
+	for(i=0;i<10;i++)
+	{
+	  curUser[i]=temp[i];	
+	}
+
+	/* init password */
+	clearArr(password,10);
+	clearArr(temp,128);
+	fd=open("Password",O_RDWR | O_CREAT);
+	r = read(fd,temp,128);
+
+
+	close(fd);
+
+	for(i=0;i<10;i++)
+	{
+	  password[i]=temp[i];
+	}
 	
 
-	int ch = 0;
-	for(ch = 0; ch < strlen(info); ch++) {
-		printf("%c", info[ch]);
-		milli_delay(10);
-	}
 
+
+	/* init FAG */
+	char temp2[10*fileSize]={};
+	for(i=0;i<10;i++)
+	  {
+	    clearArr(FAT[i],fileSize);
+	  }
+       
+	fd=open("FAT",O_RDWR | O_CREAT);
+	r = read(fd,temp2,fileSize*10);
+	close(fd);
+
+	for(i=0;i<10;i++)
+	  {
+	    for(j=0;j<fileSize;j++)
+	       FAT[i][j]= temp2[i*fileSize+j];
+	  }
+
+	
+	/* init FileNames */
+	char temp3[1024];
+	clearArr(temp3,1024);
+	fd = open("FileNames",O_RDWR | O_CREAT);
+    assert(fd!=-1);
+	read(fd,temp3,1024);
+	close(fd);
+	i=0,j=0;
+	fileCount=0;
+	int  num=0;
+	while(i<strlen(temp3))
+	  {
+	    while(temp3[i]!='#')
+	      {
+		fileNames[num+1][j]=temp3[i];
+		j++;
+		i++;
+		//sleep(5);
+	      }
+	    if(strcmp(fileNames[num+1],"empty")!=0)
+	      {
+		fileCount++;
+		fd = open(fileNames[num+1],O_CREAT | O_RDWR);
+		close(fd);
+	      }
+	    else
+	      clearArr(fileNames[num+1],128);
+	    num++;
+	    i++;
+	    j=0;
+	  }	
 
 }
 
-/*****************************************************************************
- *                                Init
- *****************************************************************************/
-/**
- * The hen.
- * 
- *****************************************************************************/
-void Init() {
-	int fd_stdin  = open("/dev_tty0", O_RDWR);
-	assert(fd_stdin  == 0);
-	int fd_stdout = open("/dev_tty0", O_RDWR);
-	assert(fd_stdout == 1);
+		
+		
+/*welcome*/
 
-	printf("Init() is running ...\n");
+void welcome()
+{ 	
+	int i=0;
+	for(i=0;i<8;i++)
+		printf("\n");
 
-	/* extract `cmd.tar' */
-	untar("/cmd.tar");
+	printf("*****************************************************************************\n");
+	printf("****                     welcome to try os                               ****\n");
+	printf("****                            developers:    Lipeng Liang  1652667     ****\n");
+	printf("****                                           Yiwen  Cheng  1652660     ****\n" );
+	printf("****                                           2018  08.15               ****\n");
+	printf("*****************************************************************************\n");
 
-	char * tty_list[] = {"/dev_tty1", "/dev_tty2"};
+	for(i=0;i<8;i++)
+		printf("\n");
+}
 
+/* showLicense */
+void showLicense() {
+	printf("THE TRY-OS LICENSE\n");
+	printf("*****************************************************************************\n");
+	printf("****    May god always bless u.  :)                                      ****\n");
+	printf("****                            developers:    Lipeng Liang  1652667     ****\n");
+	printf("****                                           Yiwen  Cheng  1652660     ****\n");
+	printf("****                                           2018  08.15               ****\n");
+	printf("*****************************************************************************\n");
+}
+/* colorful */
+void colorful()
+{
+	int j = 0;
+	for (j = 0; j < 3200; j++){disp_color_str("S", BLACK);}
+	for (j = 0; j < 5; j++)
+		disp_color_str("SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS", GREEN);
+	
+
+	/*line one*/
+	disp_color_str("       **       **",RED);
+	disp_color_str("  **********",BLUE);
+	disp_color_str("  **",GREEN);
+	disp_color_str("          **",RED);
+	disp_color_str("         ***********       \n",WHITE);
+
+	/*line two*/
+	disp_color_str("  	    **       **",RED);
+	disp_color_str("  **********",BLUE);
+	disp_color_str("  **",GREEN);
+	disp_color_str("          **",RED);
+	disp_color_str("         **       **         \n",WHITE);
+
+
+	/*line three*/
+	disp_color_str("  	    **       **",RED);
+	disp_color_str("  **        ",BLUE);
+	disp_color_str("  **",GREEN);
+	disp_color_str("          **",RED);
+	disp_color_str("         **       **          \n",WHITE);
+
+
+	/*line four*/
+	disp_color_str("  	    ***********",RED);
+	disp_color_str("  **********",BLUE);
+	disp_color_str("  **        ",GREEN);	
+	disp_color_str("  **",RED);
+	disp_color_str("         **       **       \n",WHITE);
+
+	/*line five*/
+	disp_color_str("  	    ***********",RED);
+	disp_color_str("  **********",BLUE);
+	disp_color_str("  **        ",GREEN);
+	disp_color_str("  **",RED);
+	disp_color_str("         **       **     \n",WHITE);
+
+
+	/*line six*/
+	disp_color_str("  	    **       **",RED);
+	disp_color_str("  **       ",BLUE);
+	disp_color_str("   **",GREEN);
+	disp_color_str("          **",RED);
+	disp_color_str("         **       **     \n",WHITE);
+
+	/*line seven*/
+	disp_color_str("  	    **       **",RED);
+	disp_color_str("  **********",BLUE);
+	disp_color_str("  **********",GREEN);
+	disp_color_str("  **********",RED);
+	disp_color_str(" **       **        \n",WHITE);
+
+	/*line eight*/
+	disp_color_str("  	    **       **",RED);
+	disp_color_str("  **********",BLUE);
+	disp_color_str("  **********",GREEN);
+	disp_color_str("  **********",RED);
+	disp_color_str(" ***********      \n",WHITE);
+
+		for (j = 0; j < 5; j++)
+		disp_color_str("SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS", GREEN);
+
+	milli_delay(8000);
+
+
+	
+}
+
+/* Clear */
+PUBLIC void clear()
+{
+	int i = 0;
+	for (i = 0; i < 30; i++)
+		printf("\n");
+}
+
+int getPos()
+{
+  int i=0;
+  for(;i<20;i++)
+    {
+      if(strcmp(fileNames[i],curFile)==0)
+	return i;
+    }
+  return 0;
+}
+/* Show Process */
+void showProcess()
+{	int i = 0;
+	printf("********************************************************************************\n");
+	printf("    pid    |    name    |    priority    |    kill?\n");
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	for (i = 0; i < NR_TASKS + NR_PROCS; i++)
+	{
+		printf("    %d    |    %s    |    %d    |    %d\n", i, proc_table[i].name, proc_table[i].priority, proc_table[i].p_flags);
+	}
+	printf("********************************************************************************\n");
+}
+/* kill */
+int kill(char * procName){
 	int i;
-	for (i = 0; i < sizeof(tty_list) / sizeof(tty_list[0]); i++) {
-		int pid = fork();
-		if (pid != 0) { /* parent process */
-			printf("[parent is running, child pid:%d]\n", pid);
-		}
-		else {	/* child process */
-			printf("[child is running, pid:%d]\n", getpid());
-			close(fd_stdin);
-			close(fd_stdout);
-			
-			Toy_shell(tty_list[i]);
-			assert(0);
-		}
-	}
-
-	milli_delay(10000);
-	printInfo();
-
-
-	while (1) {
-		int s;
-		int child = wait(&s);
-		printf("child (%d) exited with status: %d.\n", child, s);
-	}
-
-	assert(0);
-}
-
-
-/*======================================================================*
-                               TestA
- *======================================================================*/
-void TestA()
-{
-	for(;;) {
-	}
-}
-
-/*======================================================================*
-                               TestB
- *======================================================================*/
-void TestB()
-{
-	for(;;) {
-		//printf("b");
-		//disp_str("b");
-	}
-}
-
-/*======================================================================*
-                               TestC
- *======================================================================*/
-void TestC()
-{
-	for(;;) {
-		//printf("c");
-		//disp_str("c");
-	};
-}
-
-/*****************************************************************************
- *                                panic
- *****************************************************************************/
-PUBLIC void panic(const char *fmt, ...)
-{
-	int i;
-	char buf[256];
-
-	/* 4 is the size of fmt in the stack */
-	va_list arg = (va_list)((char*)&fmt + 4);
-
-	i = vsprintf(buf, fmt, arg);
-
-	printl("%c !!panic!! %s", MAG_CH_PANIC, buf);
-
-	/* should never arrive here */
-	__asm__ __volatile__("ud2");
-}
-
-
-PRIVATE int help() {
-	printf("=============================================================================\n"
-			"Welcome to Grand Line !\n"
-			"It's time to search for the ONE-PIECE !!"
-			"These shell commands are defined internally.  Type 'help' to see this list.\n"
-			"=============================================================================\n"
-			"1.  help      :  See the list of shell commands.\n"
-			"2.  license   :  See the license of ONE-PIECE\'OS.\n"
-			"3.  echo      :  Print the arguments to the screen.\n"
-			"4.  time      :  Print OS time.\n"
-			"5.  ps        :  Print the status of processes.\n"
-			"6.  cpuinfo   :  Show the infomation of CPU.\n"
-			"7.  pause     :  Pause a process.\n"
-			"8.  awake     :  Awake a process.\n"
-			"9.  kill      :  Kill a process.\n"
-			"10. clear	   :  Clear Screen"
-			"11. touch     :  Create a file. Only '.txt' file is allowed.\n"
-			"12. rm        :  Delete a file. Can`t delete the system file.\n"
-			"13. mv        :  Move a file.\n"
-			"14. ls        :  List all files.\n"
-			"15. cat       :  Show the content of file.\n"
-			"16. vi        :  File editor.\n"
-			"17. escape    :  A stupid little game.\n"		
-			"=============================================================================\n");
-	return 0;
-}
-
-
-
- PRIVATE int get_commands(int argc, char* argv[]) {
-	 
-	if(strcmp(argv[0], "help") == 0)
-		return help();
-	else if(strcmp(argv[0], "time") == 0)
-		return currentTime();
-	else if(strcmp(argv[0], "ps") == 0)
-		return pro_details();
-	else if(strcmp(argv[0], "pause") == 0)
-		return pause(argc, argv);
-	else if(strcmp(argv[0], "kill") == 0)
-		return kill(argc, argv);
-	else if(strcmp(argv[0], "awake") == 0)
-		return awake(argc, argv);
-	else if(strcmp(argv[0], "license") == 0)
-		return showLicense();
-	else if(strcmp(argv[0], "clear") == 0)
-		return clearScreen();
-
-
-	return -2;
-}
-
-
-PRIVATE int currentTime() {
-	struct time t = get_time_RTC();
-	printf("%d/%d/%d %d:%d:%d\n", t.year, t.month, t.day, t.hour, t.minute, t.second);
-	return 0;
-}
-
-PRIVATE int showLicense() {
-	char *info = "THE ONE-PIECE\'OS LICENSE\n"
-	"Welcome to Grand Line !\n"
-	"It's time to search for the ONE-PIECE !!"
-	"========================================"
-	"Developed by 1652667 Lipeng Liang\n"
-	"             1652660 Yiwen Cheng\n";
-
-	int ch = 0;
-	for(ch = 0; ch < strlen(info); ch++) {
-		printf("%c", info[ch]);
-		milli_delay(10);
-	}
-
-	return 0;
-}
-
-PRIVATE int pause(int argc, char * argv[]) {
 	struct proc * p = proc_table;
-	//char* proc_name = [128];
-	//memset(proc_name, 0, 128);
-	if (argc == 1) {
-		printf("Please input the name of process, you can use 'ps' command to see\n");
-		return 0;
-	}
-	int i;
-	//for (i = 0; i < strlen(argv[1]); i++) {
-	//	proc_name[i] = argv[i];
-	//}
+
 	for (i = 0; i < NR_TASKS + NR_NATIVE_PROCS; i++, p++) {
-		if (strcmp(argv[1], p->name) == 0) {
-			if (i < NR_TASKS) {
-				printf("Can`t pause system task!\n");
-				return 0;
-			}
-			else {
-				p->p_flags = -1;
-				printf("Success!\n");
-				return 0;
-			}
-		}
-	}
-
-	printf("Please input correct proc name, you can use 'ps' command to see\n");
-	return 0;
-
-}
-
-PRIVATE int awake(int argc, char * argv[]) {
-	struct proc * p = proc_table;
-	//char* proc_name = [128];
-	//memset(proc_name, 0, 128);
-	if (argc == 1) {
-		printf("Please input proc name, you can use 'ps' command to see\n");
-		return 0;
-	}
-	int i;
-	//for (i = 0; i < strlen(argv[1]); i++) {
-	//	proc_name[i] = argv[i];
-	//}
-	for (i = 0; i < NR_TASKS + NR_NATIVE_PROCS; i++, p++) {
-		if (strcmp(argv[1], p->name) == 0) {
-			if (p->p_flags == 0) {
-				printf("%s proc is running!\n", p->name);
-				return 0;
-			}
-			else if (p->priority == -1) {
-				printf("%s proc has been killed, can`t awake!\n", p->name);
-				return 0;
-			}
-			else {
-				p->p_flags = 0;
-				printf("Success!\n");
-				return 0;
-			}
-		}
-	}
-
-	printf("Please input correct proc name, you can use 'ps' command to see\n");
-	return 0;
-}
-
-PRIVATE int kill(int argc, char * argv[]) {
-	struct proc * p = proc_table;
-	//char* proc_name = [128];
-	//memset(proc_name, 0, 128);
-	if (argc == 1) {
-		printf("Please input proc name, you can use 'ps' command to see\n");
-		return 0;
-	}
-	int i;
-	//for (i = 0; i < strlen(argv[1]); i++) {
-	//	proc_name[i] = argv[i];
-	//}
-	for (i = 0; i < NR_TASKS + NR_NATIVE_PROCS; i++, p++) {
-		if (strcmp(argv[1], p->name) == 0) {
+		if (strcmp(procName, p->name) == 0) {
 			if (i < NR_TASKS) {
 				printf("Can`t kill system task!\n");
 				return 0;
@@ -632,36 +1081,396 @@ PRIVATE int kill(int argc, char * argv[]) {
 	}
 
 	printf("Please input correct proc name, you can use 'ps' command to see\n");
+  return 0;
+}
+
+/* pause */
+int pause(char * procName){
+	struct proc * p = proc_table;
+	int i;
+	for (i = 0; i < NR_TASKS + NR_NATIVE_PROCS; i++, p++) {
+		if (strcmp(procName, p->name) == 0) {
+			if (i < NR_TASKS) {
+				printf("Can`t pause system task!\n");
+				return 0;
+			}
+			else {
+				p->p_flags = -1;
+				printf("Success!\n");
+				return 0;
+			}
+		}
+	}
+
+	printf("Please input correct proc name, you can use 'ps' command to see\n");
 	return 0;
 }
 
-PRIVATE int pro_details() {
-    struct proc * p = proc_table;
-    int i;
-	printf("===================== Process Viewer ====================\n");
-	printf("    pid    |    name    |    running?    |    kill?\n");
-	//进程号，进程名，优先级，是否在运行，是否被杀掉
+/* resume */
+int resume(char * procName) {
+	struct proc * p = proc_table;
+	int i;
+	
+	for (i = 0; i < NR_TASKS + NR_NATIVE_PROCS; i++, p++) {
+		if (strcmp(procName, p->name) == 0) {
+			if (p->p_flags == 0) {
+				printf("%s proc is running!\n", p->name);
+				return 0;
+			}
+			else if (p->priority == -1) {
+				printf("%s proc has been killed, can`t resume!\n", p->name);
+				return 0;
+			}
+			else {
+				p->p_flags = 0;
+				printf("Success!\n");
+				return 0;
+			}
+		}
+	}
 
-    for (i = 0; i < NR_TASKS; i++,p++) {             
-        printf("     %d    |     %s        |    %d     |    %d\n", i, p->name, p->p_flags, p->priority);
-    }
-    printf("===================== User Process ====================\n");      
-    for (; i < NR_TASKS + NR_NATIVE_PROCS; i++,p++) {	 //跳过系统资源
-        printf("     %d    |     %s        |    %d     |    %d\n", i, p->name, p->p_flags, p->priority);     
-    }
-    return 0;
+	printf("Please input correct proc name, you can use 'ps' command to see\n");
+	return 0;
 }
 
-PRIVATE int clearScreen(){
-	clear_screen(0,console_table[current_console].cursor);
-    console_table[current_console].crtc_start = console_table[current_console].orig;
-    console_table[current_console].cursor = console_table[current_console].orig;
 
-	if(current_console==0){
-    	printf("clear failure\n");
+/* Show Help Message */
+void help()
+{
+	
+	printf("********************************************************************************\n");
+	printf("        name               |                      function                      \n");
+	printf("********************************************************************************\n");
+	printf("            (Add up to 19 commands)                                              \n");
+
+  milli_delay(10000);
+
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("                      About Login                                               \n");
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("        welcome            |           Welcome the users\n");
+	printf("        newLogin           |           Create a new user\n");
+	printf("        login  [user][pw]  |           Login \n");	
+	
+	milli_delay(10000);
+
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("                      Little Commands                                           \n");
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("        license            |           See the license of TRY-OS.\n");
+	printf("        time               |           Print OS time\n");
+	printf("        clear              |           Clean the screen\n");
+	printf("        help               |           List all commands\n");
+
+	milli_delay(10000);
+
+  printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("                       FS     Commands                                           \n");
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("        ls                 |           List all files in current file path\n");
+	printf("        pwd                |           Show current location\n");
+	printf("        cd     [file]      |           Enter the file in current dir\n");
+	printf("        create [file]      |           Create a file\n");
+	printf("        read   [file]      |           Read a file\n");
+	printf("        delete [file]      |           Delete a file\n");
+	printf("        save   [file]      |           Save the file\n");
+	printf("        edit   [file]      |           Edit file, cover the content\n");
+
+ 	milli_delay(10000);
+
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("                      Process Commands                                           \n");
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("        proc               |           List all process's message\n");
+	printf("        pause  [proc]      |           Pause a process\n");
+	printf("        resume [proc]      |           Resume a process\n");
+	printf("        kill   [proc]      |           Kill a process\n");
+
+
+	milli_delay(10000);
+
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("                      User   Exe                                        \n");
+	printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+	printf("        print  [str]       |           Print a string\n");
+	printf("        push               |           Start push game\n");
+	printf("        gomoku             |           Start gomoku\n");
+	printf("********************************************************************************\n");
+	
+}
+
+/* Create File */
+void createFile(char * fileName)
+{
+  int fp=-1;
+  int curPos=0;                               //current file's position in FAT
+  char temp[128];
+
+  clearArr(temp,128);
+  if(isExist(fileName)!=-1)
+    {
+      /* printf("file Exists\n"); */
+      return;
     }
-    else{
-    	printf("[TTY #%d]\n", current_console);
+
+  curPos=getPos();
+
+      //printf("curPos:  %d\n",curPos);
+      int i=1;
+      while(FAT[curPos][i]!=0  && i<fileSize){
+  			i++;
+      };
+      
+      if(i==fileSize)
+  	     printf("%d file has been full",curPos);
+      else
+  	{	  
+	   fp=open(fileName,O_CREAT | O_RDWR); 
+	   assert(fp!=-1); 
+	  printf("%s created successfully fp:%d \n",fileName,fp);
+	  write(fp,temp,128);
+	  close(fp);
+	  fileCount++;
+	  strcpy(fileNames[fileCount],fileName);       //  add File in Filenames
+  	  FAT[curPos][i]=fileCount;
+	  FAT[curPos][0]++;
+ 	 }
+}
+
+//if fileName exists in current directory return position
+//else return -1
+int isExist(char * fileName)
+{
+  int fp=-1, curPos=0, childFileNums=0, i=0,pos=0;
+
+  curPos=getPos();
+  //printf("curPos:%d\n",curPos);
+  childFileNums=FAT[curPos][0];
+  while(childFileNums>0)
+    {   
+      pos = FAT[curPos][i+1];
+     // printf("curPos:%d\n",curPos);
+     // printf("pos:%d\n",pos);
+      if(pos!=0)
+	{
+	  if(strcmp(fileNames[pos],fileName)==0)
+	    break;
+	 childFileNums--;
+	}
+       i++;
     }
-	return 0;
-} 
+  
+  if(childFileNums>0)
+      return pos;
+  else{
+    return -1;
+  }
+}
+
+void editFile(char * arg)
+{
+  int fp=-1,result=-1,r=0;
+  char rdbuf[128];
+
+  if(isExist(arg)==-1)
+    {
+      printf("no such file in current directory,edit fail!\n");
+      return;
+    }
+
+  printf("please print new file content\n");
+
+  clearArr(rdbuf,128);
+  r = read(0, rdbuf, 70);
+  rdbuf[r] = 0;
+ 
+
+  fp = open(arg,O_RDWR);
+  result=write(fp,rdbuf,r);
+  close(fp);
+  
+  if(result==-1)
+    printf("write error: %s\n",arg);
+  else
+     printf("write success num: %d \n",result);
+}
+
+/* Read File */
+void readFile(char * fileName)
+{
+  int fp=-1;
+  char rdbuf[128];
+  
+ 
+  clearArr(rdbuf,128);
+  
+  if(isExist(fileName)==-1)
+    {
+      printf("read fail no such file!\n");
+      return;
+    }
+  
+
+  fp = open(fileName,O_RDWR);
+  assert(fp!=-1);
+  int r = read(fp,rdbuf,128);
+  assert(r!=-1);
+  close(fp);
+  rdbuf[r]=0;
+  printf("content in %s: %s num: %d\n",fileName,rdbuf,r);
+}
+
+/* pwd */
+void pwd(){
+	printf("%s\n",location);
+}
+
+/* Delete File */
+void deleteFile(char * fileName)
+{
+
+int curPos = 0,i=1,j=1,pos=0;
+
+ curPos = getPos();
+ pos = isExist(fileName);
+
+ if(pos==-1)
+   {
+     printf("no %s fileName in current directory delete fail\n ",fileName);
+ 	return;
+   }
+
+ for(i=1;i<fileSize;i++)
+   {
+     int temp = FAT[curPos][i];
+     if(strcmp(fileNames[temp],fileName)==0)
+       break;
+   }
+ FAT[curPos][0]--;
+ FAT[curPos][i]=0;
+ delete(pos);
+ save();
+}
+
+void delete(int pos)
+{
+  unlink(fileNames[pos]);
+
+  printf("unlink succeed\n");
+  clearArr(fileNames[pos],128);
+  fileCount--;
+
+  if(FAT[pos][0]==0)
+    return;
+  else
+    {
+      int num=FAT[pos][0];
+      int  i=1;
+      while(num>0)
+	{
+	  if(FAT[pos][i]!=0)
+	    {
+	      delete(FAT[pos][i]);
+	      FAT[pos][i]=0;
+	      FAT[pos][0]--;
+	      num--;
+	    }
+	  i++;
+	}
+
+    }
+
+}
+
+
+
+
+/* ls */
+void lsFile()
+{
+	int curPos =0,pos=0,num=0,i=0;
+	 
+	curPos = getPos();
+	num= FAT[curPos][0];
+	
+	//printf("in lsFile num: %d\n curPos:%d",num,curPos);
+	for( i=1;i<fileSize && num>0 ;i++)
+	{
+	  if(FAT[curPos][i]!=0)
+	    {
+	      pos = FAT[curPos][i];
+	      printf("%s ",fileNames[pos]);
+	      num--;
+	    }
+	}
+	 printf("\n");
+}
+
+/* cd */
+void cdFile(char * fileName)
+{
+	int pos=-1;
+	 	
+	if(strcmp(fileName,"..")==0)
+	{
+		cdBack();
+		return;
+	}
+
+	pos = isExist(fileName);
+
+	if(pos==-1){
+    printf("no such file in it.\n");
+	  return;
+	}
+	clearArr(curFile,128);
+	strcpy(curFile,fileName);
+	strcat(location,"/");
+	strcat(location,fileName);	
+	
+}
+void cdBack()
+{
+	
+  int curPos = 0,i=0,j=0,pos=0,len=0;
+	
+  	curPos= getPos();
+	if(curPos==0)
+	  return;
+	clearArr(curFile,128);
+	len = strlen(location);
+	i=len-1;
+	location[len]='\0';
+	while(location[i]!='/')
+	  {
+	    location[i]='\0';
+	    i--;
+	  }
+	location[i]='\0';
+	i--;
+	while(i>=0&&location[i]!='/' )
+	  {
+	    i--;
+	  }
+	i++;
+	while(location[i]!='\0')
+	  {
+	    curFile[j]=location[i];
+	    i++;
+	    j++;
+	  }
+	curFile[j]='\0';
+}
+
+PUBLIC int TESTA(char * topic)
+{
+	MESSAGE msg;
+	reset_msg(&msg);
+	msg.type = XIA;
+	strcpy(msg.content, topic);
+	printf("%s\n", msg.content);
+	send_recv(BOTH, TASK_SYS, &msg);
+	return msg.RETVAL;
+}
+
+	

@@ -45,13 +45,10 @@ PUBLIC void schedule()
 			}
 		}
 
-		if (!greatest_ticks) {
-			for (p = &FIRST_PROC; p <= &LAST_PROC; p++) {
-				if (p->p_flags == 0) {
-						p->ticks = p->prio;		 
-				}	
-			}
-		}								
+		if (!greatest_ticks) // 所有ticks都是0，则全部都被停止了
+			for (p = &FIRST_PROC; p <= &LAST_PROC; p++)
+				if (p->p_flags == 0)
+					p->ticks = p->rank; // 重新赋予为当前的优先级
 	}
 }
 
@@ -333,7 +330,6 @@ PRIVATE int msg_send(struct proc* current, int dest, MESSAGE* m)
  *****************************************************************************/
 PRIVATE int msg_receive(struct proc* current, int src, MESSAGE* m)
 {
-	//disable_int();
 	struct proc* p_who_wanna_recv = current; /**
 						  * This name is a little bit
 						  * wierd, but it makes me
@@ -465,7 +461,10 @@ PRIVATE int msg_receive(struct proc* current, int src, MESSAGE* m)
 		p_from->p_flags &= ~SENDING;
 		unblock(p_from);
 	}
-	else {  
+	else {  /* nobody's sending any msg */
+		/* Set p_flags so that p_who_wanna_recv will not
+		 * be scheduled until it is unblocked.
+		 */
 		p_who_wanna_recv->p_flags |= RECEIVING;
 
 		p_who_wanna_recv->p_msg = m;
@@ -478,7 +477,7 @@ PRIVATE int msg_receive(struct proc* current, int src, MESSAGE* m)
 		assert(p_who_wanna_recv->p_sendto == NO_TASK);
 		assert(p_who_wanna_recv->has_int_msg == 0);
 	}
-	//enable_int();
+
 	return 0;
 }
 

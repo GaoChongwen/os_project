@@ -12,7 +12,7 @@ CFLAGS		= -I ../include/ -c -fno-builtin -fno-stack-protector -Wall
 LDFLAGS		= -Ttext 0x1000
 DASMFLAGS	= -D
 LIB		= ../lib/orangescrt.a
-BIN		= echo pwd touch cat ls vi cpuinfo rm mv escape
+BIN		=  caculator print gomoku push saolei 2048
 
 # All Phony Targets
 .PHONY : everything final clean realclean disasm all install
@@ -22,8 +22,8 @@ everything : $(BIN)
 
 install : all clean
 	cp ../kernel.bin ./ -v
-	tar vcf inst.tar kernel.bin $(BIN)
-	dd if=inst.tar of=$(HD) seek=`echo "obase=10;ibase=16;(\`egrep -e '^ROOT_BASE' ../boot/include/load.inc | sed -e 's/.*0x//g'\`+\`egrep -e '#define[[:space:]]*INSTALL_START_SECT' ../include/sys/config.h | sed -e 's/.*0x//g'\`)*200" | bc` bs=1 count=`ls -l inst.tar | awk -F " " '{print $$5}'` conv=notrunc
+	#tar vcf inst.tar kernel.bin $(BIN) print
+	#dd if=inst.tar of=$(HD) seek=`echo "obase=10;ibase=16;(\`egrep -e '^ROOT_BASE' ../boot/include/load.inc | sed -e 's/.*0x//g'\`+\`egrep -e '#define[[:space:]]*INSTALL_START_SECT' ../include/sys/config.h | sed -e 's/.*0x//g'\`)*200" | bc` bs=1 count=`ls -l inst.tar | awk -F " " '{print $$5}'` conv=notrunc
 
 all : realclean everything
 
@@ -33,7 +33,7 @@ clean :
 	rm -f *.o
 
 realclean :
-	rm -f $(BIN) *.o
+	rm -f $(BIN) print *.o
 
 kernel.bin :
 	cp ../kernel.bin ./
@@ -41,10 +41,10 @@ kernel.bin :
 start.o : start.asm
 	$(ASM) $(ASMFLAGS) -o $@ $<
 
-echo.o: echo.c ../include/type.h ../include/stdio.h
+caculator.o: caculator.c ../include/type.h ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-echo : echo.o start.o $(LIB)
+caculator : caculator.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
 pwd.o: pwd.c ../include/type.h ../include/stdio.h
@@ -53,50 +53,38 @@ pwd.o: pwd.c ../include/type.h ../include/stdio.h
 pwd : pwd.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-ls.o: ls.c ../include/stdio.h
+print.o : print.c ../include/type.h ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-ls : ls.o start.o $(LIB)
+print : print.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-touch.o: touch.c ../include/stdio.h ../include/sys/fs.h
+2048.o : 2048.c ../include/type.h ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-touch : touch.o start.o $(LIB)
+2048 : 2048.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-cat.o: cat.c ../include/stdio.h ../include/sys/fs.h
+saolei.o : saolei.c ../include/type.h ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-cat : cat.o start.o $(LIB)
+saolei : saolei.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-vi.o: vi.c ../include/stdio.h ../include/sys/fs.h
+gomoku.o :gomoku.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-vi : vi.o start.o $(LIB)
+gomoku: gomoku.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
 
-rm.o: rm.c ../include/stdio.h ../include/sys/fs.h
+push.o :push.c ../include/stdio.h
 	$(CC) $(CFLAGS) -o $@ $<
 
-rm : rm.o start.o $(LIB)
+push: push.o start.o $(LIB)
 	$(LD) $(LDFLAGS) -o $@ $?
+laststep : 
+	tar vcf inst.tar kernel.bin caculator print gomoku push saolei
+	dd if=inst.tar of=$(HD) seek=`echo "obase=10;ibase=16;(\`egrep -e '^ROOT_BASE' ../boot/include/load.inc | sed -e 's/.*0x//g'\`+\`egrep -e '#define[[:space:]]*INSTALL_START_SECT' ../include/sys/config.h | sed -e 's/.*0x//g'\`)*200" | bc` bs=1 count=`ls -l inst.tar | awk -F " " '{print $$5}'` conv=notrunc
 
-mv.o: mv.c ../include/stdio.h ../include/sys/fs.h
-	$(CC) $(CFLAGS) -o $@ $<
 
-mv : mv.o start.o $(LIB)
-	$(LD) $(LDFLAGS) -o $@ $?
 
-cpuinfo.o: cpuinfo.c ../include/stdio.h
-	$(CC) $(CFLAGS) -o $@ $<
-
-cpuinfo : cpuinfo.o start.o $(LIB)
-	$(LD) $(LDFLAGS) -o $@ $?
-
-escape.o: escape.c ../include/stdio.h
-	$(CC) $(CFLAGS) -o $@ $<
-
-escape : escape.o start.o $(LIB)
-	$(LD) $(LDFLAGS) -o $@ $?

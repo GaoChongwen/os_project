@@ -102,6 +102,8 @@ PUBLIC void init_keyboard()
 /**
  * Yes, it is an ugly function.
  *
+ * @todo Re-write this ugly function.
+ * 
  * @param tty  Which TTY is reading the keyboard input.
  *****************************************************************************/
 PUBLIC void keyboard_read(TTY* tty)
@@ -242,7 +244,7 @@ PUBLIC void keyboard_read(TTY* tty)
 
 		if(make){ /* Break Code is ignored */
 			int pad = 0;
-			
+
 			/* deal with the numpad first */
 			if ((key >= PAD_SLASH) && (key <= PAD_9)) {
 				pad = 1;

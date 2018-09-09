@@ -34,9 +34,9 @@ PUBLIC void clock_handler(int irq)
 	if (++ticks >= MAX_TICKS)
 		ticks = 0;
 
-	if (p_proc_ready->ticks) {
-		p_proc_ready->feedback++;
+	if (p_proc_ready->ticks){
 		p_proc_ready->ticks--;
+		p_proc_ready->feedback++;
 	}
 
 	if (key_pressed)
@@ -47,15 +47,15 @@ PUBLIC void clock_handler(int irq)
 	}
 
 	if (p_proc_ready->ticks > 0) {
-		if (p_proc_ready->priority == 1)
+		if (p_proc_ready->priority == 1) // sys task
 			return;
-		if (p_proc_ready->feedback == RR_TIME) {
-			if (p_proc_ready->prio - RR_TIME > 0) {
-				p_proc_ready->prio -= RR_TIME;
-				p_proc_ready->ticks = 0;
+		if (p_proc_ready->feedback == RR_TIME) { // 已经执行了RR_TIME了，但是ticks还是最大
+			if (p_proc_ready->rank - RR_TIME > 0) { // 如果再执行RR_TIME还执行不完的话，就要降低优先级了
+				p_proc_ready->rank -= RR_TIME; // 降低优先级
+				p_proc_ready->ticks = 0; // 运行当前时间片后停下，放在后续队列
 			}
 			else {
-				p_proc_ready->prio = RR_TIME * 4;
+				p_proc_ready->rank = RR_TIME * 4; // 再执行RR_TIME可以执行完毕，则提高优先级，赶快执行
 			}
 		}
 	}

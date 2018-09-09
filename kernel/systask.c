@@ -57,6 +57,17 @@ PUBLIC void task_sys()
 				  sizeof(t));
 			send_recv(SEND, src, &msg);
 			break;
+		case XIA:
+			if (strcmp(msg.content, "hello") == 0)
+			{
+				strcpy(msg.content, "hello");
+			}
+			else
+			{
+				strcpy(msg.content, "who are you?");
+			}
+			send_recv(SEND, src, &msg);
+			break;
 		default:
 			panic("unknown msg type");
 			break;

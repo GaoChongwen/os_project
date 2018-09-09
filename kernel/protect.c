@@ -166,6 +166,9 @@ PUBLIC void init_prot()
 	init_idt_desc(INT_VECTOR_SYS_CALL,	DA_386IGate,
 		      sys_call,			PRIVILEGE_USER);
 
+	/*init_idt_desc(INT_VECTOR_SYS_CALL,	DA_386IGate,
+		      xia_call,			PRIVILEGE_USER);*/
+
 	/* Fill the TSS descriptor in GDT */
 	memset(&tss, 0, sizeof(tss));
 	tss.ss0	= SELECTOR_KERNEL_DS;

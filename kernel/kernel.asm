@@ -26,6 +26,7 @@ extern	tss
 extern	disp_pos
 extern	k_reenter
 extern	sys_call_table
+extern	xia_call_table
 
 bits 32
 
@@ -42,6 +43,7 @@ global _start	; 导出 _start
 
 global restart
 global sys_call
+global xia_call
 
 global	divide_error
 global	single_step_exception
@@ -319,7 +321,6 @@ copr_error:
 exception:
 	call	exception_handler
 	add	esp, 4*2	; 让栈顶指向 EIP，堆栈中从顶向下依次是：EIP、CS、EFLAGS
-	;sti
 	hlt
 
 ; =============================================================================
@@ -379,6 +380,20 @@ sys_call:
         cli
 
         ret
+
+
+
+xia_call:
+	call	save
+
+	sti
+
+	call	[xia_call_table + eax * 4]
+	mov	[esi + EAXREG - P_STACKBASE], eax
+
+	cli
+
+	ret
 
 
 ; ====================================================================================
